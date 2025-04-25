@@ -16,6 +16,10 @@ int baud_rate;
 #define U0FCR (*(volatile int *)0x4000C008)
 #define U0LCR (*(volatile int *)0x4000C00C)
 #define U0LSR (*(volatile int *)0x4000C014)
+#define U0FDR (*(volatile int *)0x4000C028)
+
+#define EEPROM_ADDRESS_WRITE 0b10101110
+#define EEPROM_ADDRESS_READ 0b10101111
 
 #define I2C0CONSET (*(volatile int *)0x4001C000)
 #define I2C0STAT (*(volatile int *)0x4001C004)
@@ -41,6 +45,8 @@ int baud_rate;
 #define PINSEL0 (*(volatile int *)0x4002C000)
 #define PINSEL1 (*(volatile int *)0x4002C004)
 #define PINSEL4 (*(volatile int *)0x4002C010)
+
+#define PINMODE0 (*(volatile int *) 0x4002C040)
 
 void Start0() {
   I2C0CONSET = CONCLR_SIC;
@@ -97,39 +103,67 @@ float Temp_Read_Cel(void) {
   return 0.5 * ((MSB << 1) | (LSB >> 7));
 }
 
-void uart0_putc(char c) {
-  while (!(U0LSR & (1u << 5)))
-    ;
-  U0THR = (int)c;
+void U0SendChar(char c) {
+  while (!(U0LSR & (1 << 5)));
+
+  U0THR = (int)c & 0xFF;
 }
 
-void uart0_write(const char *s) {
+void U0Write(const char *s) {
   while (*s)
-    uart0_putc(*s++);
+    U0SendChar(*s++);
 }
 
-int _write(int fd, char *ptr, int len) {
-  (void)fd;
-  for (int i = 0; i < len; ++i)
-    uart0_putc(ptr[i]);
-  return len;
+void mem_wait(){
+	for (int i = 0; i < 1000; i++){
+	}
+}
+
+void mem_write_byte(int index, int data){
+	int address = index * 0x04;
+	Start0();
+	Write0(EEPROM_ADDRESS_WRITE);
+	Write0(address & 0xFF);
+	Write0(data & 0xFF);
+	Stop0();
+	mem_wait();
+}
+
+int mem_read(int index){
+	int address = index * 0x04;
+	int data;
+	Start0();
+	Write0(EEPROM_ADDRESS_WRITE);
+	Write0(address & 0xFF);
+	Start0();
+	Write0(EEPROM_ADDRESS_READ);
+	data = Read0(0);
+	Stop0();
+	return data & 0xFF;
 }
 
 void initialization() {
   // UART Block
+  PCONP |= 1 << 3;
   PINSEL0 &= ~(1 << 5);
   PINSEL0 |= 1 << 4;
 
   PINSEL0 &= ~(1 << 7);
   PINSEL0 |= 1 << 6;
 
+  PINMODE0 &= ~(1 << 5);
+  PINMODE0 |= 1 << 4;
+
+  PINMODE0 &= ~(1 << 7);
+  PINMODE0 |= 1 << 6;
+
   PCLKSEL0 &= ~(1 << 7);
   PCLKSEL0 |= (1 << 6);
 
-  baud_rate = 100000000 / (16 * UART_BAUD);
   U0LCR = 0x83;
-  U0DLM = (baud_rate >> 8) & 0xFF;
-  U0DLL = baud_rate & 0xFF;
+  U0DLM = 0;
+  U0DLL = 12;
+  U0FDR = (13 << 4) | 1;
   U0LCR = 0x03;
   U0FCR = 0x07;
 
@@ -151,15 +185,17 @@ void initialization() {
   I2C0CONCLR = CONCLR_STAC;
   I2C0CONCLR = CONCLR_I2ENC;
   I2C0CONSET = CONSET_I2EN;
+
+  // EEPROM Block
 }
 
 int main(void) {
   initialization();
 
-  printf("Wow");
+  mem_write_byte(0, 42);
   while (1) {
-        printf("Still Works");
+	    int x = mem_read(0);
+        U0SendChar(42);
         delay_ms(2000);
-        
   }
 }
