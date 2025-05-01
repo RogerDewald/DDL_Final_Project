@@ -3,10 +3,6 @@
 #endif
 #include <cr_section_macros.h>
 
-#define PCLK 25000000
-#define UART_BAUD 115200
-int baud_rate;
-
 #define PCONP (*(volatile int *)0x400FC0C4)
 #define PCLKSEL0 (*(volatile int *)0x400FC1A8)
 
@@ -47,6 +43,7 @@ int baud_rate;
 #define PINSEL4 (*(volatile int *)0x4002C010)
 
 #define PINMODE0 (*(volatile int *) 0x4002C040)
+#define PINMODE1 (*(volatile int *) 0x4002C044)
 
 void Start0() {
   I2C0CONSET = CONCLR_SIC;
@@ -106,7 +103,7 @@ float Temp_Read_Cel(void) {
 void U0SendChar(char c) {
   while (!(U0LSR & (1 << 5)));
 
-  U0THR = (int)c & 0xFF;
+  U0THR = c & 0xFF;
 }
 
 void U0Write(const char *s) {
@@ -120,7 +117,7 @@ void mem_wait(){
 }
 
 void mem_write_byte(int index, int data){
-	int address = index * 0x04;
+	int address = index;
 	Start0();
 	Write0(EEPROM_ADDRESS_WRITE);
 	Write0(address & 0xFF);
@@ -130,7 +127,7 @@ void mem_write_byte(int index, int data){
 }
 
 int mem_read(int index){
-	int address = index * 0x04;
+	int address = index;
 	int data;
 	Start0();
 	Write0(EEPROM_ADDRESS_WRITE);
@@ -151,14 +148,14 @@ void initialization() {
   PINSEL0 &= ~(1 << 7);
   PINSEL0 |= 1 << 6;
 
-  PINMODE0 &= ~(1 << 5);
-  PINMODE0 |= 1 << 4;
+  PINMODE0 |= (1 << 5);
+  PINMODE0 &= ~(1 << 4);
 
-  PINMODE0 &= ~(1 << 7);
-  PINMODE0 |= 1 << 6;
+  PINMODE0 |= (1 << 7);
+  PINMODE0 &= ~(1 << 6);
 
-  PCLKSEL0 &= ~(1 << 7);
-  PCLKSEL0 |= (1 << 6);
+  // PCLKSEL0 &= ~(1 << 7);
+  // PCLKSEL0 |= (1 << 6);
 
   U0LCR = 0x83;
   U0DLM = 0;
@@ -167,16 +164,18 @@ void initialization() {
   U0LCR = 0x03;
   U0FCR = 0x07;
 
-  // PWM Block
-  PCONP |= (1 << 1);
-
   // I2C Block
-  PCONP |= (1 << 7);
+  PCONP |= 1 << 7;
 
   PINSEL1 &= ~(1 << 23);
-  PINSEL1 |= (1 << 22);
+  PINSEL1 |= 1 << 22;
   PINSEL1 &= ~(1 << 25);
-  PINSEL1 |= (1 << 24);
+  PINSEL1 |= 1 << 24;
+
+  PINMODE1 |= (1 << 23);
+  PINMODE1 &= ~(1 << 22);
+  PINMODE1 |= (1 << 25);
+  PINMODE1 &= ~(1 << 24);
 
   I2C0SCLH = 5;
   I2C0SCLL = 5;
@@ -186,16 +185,19 @@ void initialization() {
   I2C0CONCLR = CONCLR_I2ENC;
   I2C0CONSET = CONSET_I2EN;
 
-  // EEPROM Block
 }
 
 int main(void) {
   initialization();
 
-  mem_write_byte(0, 42);
+  mem_write_byte(3, 42);
+  char x[] = "Hello, World\r\n";
   while (1) {
-	    int x = mem_read(0);
-        U0SendChar(42);
-        delay_ms(2000);
+    int temp = Temp_Read_Cel();
+    printf(temp);
+    int y = mem_read(3);
+    U0SendChar(y);
+    U0Write(x);
+    delay_ms(2000);
   }
 }
