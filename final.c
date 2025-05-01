@@ -159,15 +159,17 @@ void set_freq(int freq_hz) {
 
 	T2TCR = 0;
 
+	T2PR = 0;
+
 	int period = 1000000 / freq_hz;
-	T2MR0 = period;
+
 	T2MR1 = period/2 - 1;
 
 	T2MCR = 1 << 4;
 
 	T2EMR = 3 << 6;
 
-	T2TCR = 1 << 0;
+	T2TCR = 1;
 }
 
 void initialization() {
