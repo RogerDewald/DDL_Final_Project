@@ -56,9 +56,9 @@
 #define PINMODE0 (*(volatile int *) 0x4002C040)
 #define PINMODE1 (*(volatile int *) 0x4002C044)
 
-#define T2IR (*(volatile int *)0x40009000)
+#define T2IR (*(volatile int *)0x40090000)
 #define T2TCR (*(volatile int * )0x40090004)
-#define T2TC (*(volatile int * )0x4009008)
+#define T2TC (*(volatile int * )0x40090008)
 #define T2PR (*(volatile int * )0x4009000C)
 #define T2PC (*(volatile int * )0x40090010)
 #define T2MCR (*(volatile int * )0x40090014)
@@ -158,15 +158,14 @@ int mem_read(int index){
 void set_freq(int freq_hz) {
 
 	T2TCR = 0;
-	T2PR = 0;
 
 	int period = 1000000 / freq_hz;
-	T2MR0 = period/2 - 1;
-	T2MR1 = period;
+	T2MR0 = period;
+	T2MR1 = period/2 - 1;
 
-	T2MCR = 0b11000 & 12;
+	T2MCR = 1 << 4;
 
-	T2EMR = 3 << 4;
+	T2EMR = 3 << 6;
 
 	T2TCR = 1 << 0;
 }
@@ -234,26 +233,15 @@ void initialization() {
   PINSEL0 |= 1 << 15;
   PINSEL0 |= 1 << 14;
 
+  PINMODE0 |= (1 << 15);
+  PINMODE0 &= ~(1 << 14);
+
 }
 
 int main(void) {
   initialization();
 
-  mem_write_byte(3, 'y');
-  delay_ms(20);
-  char x[] = "Hello, World\r\n";
-  char temp_buff[2];
+  set_freq(1000);
   while (1) {
-    int temp = Temp_Read_Cel();
-    sprintf(temp_buff, "%d\r\n", temp);
-    //printf("%d\n", temp);
-    char y = mem_read(3);
-    U0Write(temp_buff);
-    U0SendChar(y);
-    U0Write("\r\n");
-    delay_ms(1000);
-    set_freq(400);
-    delay_ms(1000);
-    T2TCR = 0;
   }
 }
