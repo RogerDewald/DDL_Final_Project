@@ -173,6 +173,47 @@ void set_freq(int freq_hz) {
 	T2TCR = 0x01;
 }
 
+typedef struct {
+    char pitch;
+    int beats;
+} note;
+
+int note_lookup(char note) {
+    switch (note) {
+    case 'E':
+        return 330;
+    case 'g':
+        return 370;
+    case 'G':
+        return 392;
+    case 'A':
+        return 400;
+    case 'B':
+        return 494;
+    case 'd':
+        return 554;
+    case 'D':
+        return 587;
+    default:
+        return 400;
+    }
+}
+
+static const note halo_tune[15] = {{'E', 1}, {'g', 1}, {'G', 1}, {'A', 1}, {'G', 1}, {'g', 1}, {'E', 2},
+                                   {'B', 1}, {'d', 1}, {'D', 2}, {'d', 1}, {'A', 1}, {'d', 1}, {'B', 5}};
+
+void play_note(note note){
+    set_freq(note.pitch);
+    delay_ms(note.beats * 500);
+    T2TCR = 0;
+}
+
+void landing_tune(){
+    for (int i = 0; i < 15; i++){
+        play_note(halo_tune[i]);
+    }
+}
+
 void initialization() {
   // UART Block
   PCONP |= 1 << 3;
