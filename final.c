@@ -3,6 +3,8 @@
 #endif
 #include <cr_section_macros.h>
 
+#include <stdio.h>
+
 #define PCONP (*(volatile int *)0x400FC0C4)
 #define PCLKSEL0 (*(volatile int *)0x400FC1A8)
 
@@ -14,16 +16,24 @@
 #define U0LSR (*(volatile int *)0x4000C014)
 #define U0FDR (*(volatile int *)0x4000C028)
 
-#define EEPROM_ADDRESS_WRITE 0b10101110
-#define EEPROM_ADDRESS_READ 0b10101111
+#define EEPROM_ADDRESS_WRITE 0xA0
+#define EEPROM_ADDRESS_READ 0xA1
 
-#define I2C0CONSET (*(volatile int *)0x4001C000)
-#define I2C0STAT (*(volatile int *)0x4001C004)
-#define I2C0ADR0 (*(volatile int *)0x4001C00C)
-#define I2C0SCLH (*(volatile int *)0x4001C010)
-#define I2C0SCLL (*(volatile int *)0x4001C014)
-#define I2C0DAT (*(volatile int *)0x4001C008)
-#define I2C0CONCLR (*(volatile int *)0x4001C018)
+//#define I2C0CONSET (*(volatile int *)0x4001C000)
+//#define I2C0STAT (*(volatile int *)0x4001C004)
+//#define I2C0ADR0 (*(volatile int *)0x4001C00C)
+//#define I2C0SCLH (*(volatile int *)0x4001C010)
+//#define I2C0SCLL (*(volatile int *)0x4001C014)
+//#define I2C0DAT (*(volatile int *)0x4001C008)
+//#define I2C0CONCLR (*(volatile int *)0x4001C018)
+
+#define I2C0CONSET (*(volatile int *)0x4005C000)
+#define I2C0STAT (*(volatile int *)0x4005C004)
+#define I2C0ADR0 (*(volatile int *)0x4005C00C)
+#define I2C0SCLH (*(volatile int *)0x4005C010)
+#define I2C0SCLL (*(volatile int *)0x4005C014)
+#define I2C0DAT (*(volatile int *)0x4005C008)
+#define I2C0CONCLR (*(volatile int *)0x4005C018)
 
 #define TEMP_ADDRESS (0b1001000 << 1)
 
@@ -40,10 +50,21 @@
 
 #define PINSEL0 (*(volatile int *)0x4002C000)
 #define PINSEL1 (*(volatile int *)0x4002C004)
+#define PINSEL3 (*(volatile int *)0x4002C00C)
 #define PINSEL4 (*(volatile int *)0x4002C010)
 
 #define PINMODE0 (*(volatile int *) 0x4002C040)
 #define PINMODE1 (*(volatile int *) 0x4002C044)
+
+#define T2IR (*(volatile int *)0x40009000)
+#define T2TCR (*(volatile int * )0x40090004)
+#define T2TC (*(volatile int * )0x4009008)
+#define T2PR (*(volatile int * )0x4009000C)
+#define T2PC (*(volatile int * )0x40090010)
+#define T2MCR (*(volatile int * )0x40090014)
+#define T2MR0 (*(volatile int * )0x40090018)
+#define T2MR1 (*(volatile int * )0x4009001C)
+#define T2EMR (*(volatile int *)0x4009003C)
 
 void Start0() {
   I2C0CONSET = CONCLR_SIC;
@@ -80,10 +101,10 @@ int Read0(int ack) {
 }
 
 void delay_ms(float ms) {
-  volatile int sec_count = ms * 5e2;
-  while (sec_count > 0) {
-    sec_count--;
-  }
+	int sec_count = ms * 5e2;
+	while (sec_count > 0){
+		sec_count--;
+	}
 }
 
 float Temp_Read_Cel(void) {
@@ -103,7 +124,7 @@ float Temp_Read_Cel(void) {
 void U0SendChar(char c) {
   while (!(U0LSR & (1 << 5)));
 
-  U0THR = c & 0xFF;
+  U0THR = (int)c & 0xFF;
 }
 
 void U0Write(const char *s) {
@@ -111,32 +132,43 @@ void U0Write(const char *s) {
     U0SendChar(*s++);
 }
 
-void mem_wait(){
-	for (int i = 0; i < 1000; i++){
-	}
-}
-
 void mem_write_byte(int index, int data){
 	int address = index;
 	Start0();
 	Write0(EEPROM_ADDRESS_WRITE);
-	Write0(address & 0xFF);
-	Write0(data & 0xFF);
+	Write0(address);
+	Write0(data);
 	Stop0();
-	mem_wait();
 }
 
 int mem_read(int index){
-	int address = index;
+	int address = index & 0xFF;
 	int data;
 	Start0();
 	Write0(EEPROM_ADDRESS_WRITE);
-	Write0(address & 0xFF);
+	Write0(address);
+
 	Start0();
 	Write0(EEPROM_ADDRESS_READ);
 	data = Read0(0);
 	Stop0();
 	return data & 0xFF;
+}
+
+void set_freq(int freq_hz) {
+
+	T2TCR = 0;
+	T2PR = 0;
+
+	int period = 1000000 / freq_hz;
+	T2MR0 = period/2 - 1;
+	T2MR1 = period;
+
+	T2MCR = 0b11000 & 12;
+
+	T2EMR = 3 << 4;
+
+	T2TCR = 1 << 0;
 }
 
 void initialization() {
@@ -163,6 +195,17 @@ void initialization() {
   U0FDR = (13 << 4) | 1;
   U0LCR = 0x03;
   U0FCR = 0x07;
+  //Temp I2C1
+  PINSEL0 |= (1 << 0);
+      PINSEL0 |= (1 << 1);
+      PINSEL0 |= (1 << 2);
+      PINSEL0 |= (1 << 3);
+
+  PINMODE0 |= (1 << 1);
+  PINMODE0 &= ~(1 << 0);
+  PINMODE0 |= (1 << 3);
+  PINMODE0 &= ~(1 << 2);
+
 
   // I2C Block
   PCONP |= 1 << 7;
@@ -185,19 +228,32 @@ void initialization() {
   I2C0CONCLR = CONCLR_I2ENC;
   I2C0CONSET = CONSET_I2EN;
 
+  // MAT for PWM block
+  PCONP |= 1 << 22;
+
+  PINSEL0 |= 1 << 15;
+  PINSEL0 |= 1 << 14;
+
 }
 
 int main(void) {
   initialization();
 
-  mem_write_byte(3, 42);
+  mem_write_byte(3, 'y');
+  delay_ms(20);
   char x[] = "Hello, World\r\n";
+  char temp_buff[2];
   while (1) {
     int temp = Temp_Read_Cel();
-    printf(temp);
-    int y = mem_read(3);
+    sprintf(temp_buff, "%d\r\n", temp);
+    //printf("%d\n", temp);
+    char y = mem_read(3);
+    U0Write(temp_buff);
     U0SendChar(y);
-    U0Write(x);
-    delay_ms(2000);
+    U0Write("\r\n");
+    delay_ms(1000);
+    set_freq(400);
+    delay_ms(1000);
+    T2TCR = 0;
   }
 }
