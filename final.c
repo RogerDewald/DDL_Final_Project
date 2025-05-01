@@ -65,6 +65,7 @@
 #define T2MR0 (*(volatile int * )0x40090018)
 #define T2MR1 (*(volatile int * )0x4009001C)
 #define T2EMR (*(volatile int *)0x4009003C)
+#define T2CTCR (*(volatile int *)0x40090070)
 
 void Start0() {
   I2C0CONSET = CONCLR_SIC;
@@ -157,19 +158,19 @@ int mem_read(int index){
 
 void set_freq(int freq_hz) {
 
-	T2TCR = 0;
+	T2TCR = 0x02;
 
 	T2PR = 0;
 
 	int period = 1000000 / freq_hz;
 
-	T2MR1 = period/2 - 1;
+	T2MR1 = (period/2) - 1;
 
 	T2MCR = 1 << 4;
 
-	T2EMR = 3 << 6;
+	T2EMR |= 3 << 6;
 
-	T2TCR = 1;
+	T2TCR = 0x01;
 }
 
 void initialization() {
@@ -244,6 +245,18 @@ int main(void) {
   initialization();
 
   set_freq(1000);
+  delay_ms(1000);
   while (1) {
+	  set_freq(400);
+	  delay_ms(1000);
+	  T2TCR = 0;
+
+	  set_freq(500);
+	  delay_ms(1000);
+	  T2TCR = 0;
+
+	  set_freq(1000);
+	  delay_ms(1000);
+	  T2TCR = 0;
   }
 }
