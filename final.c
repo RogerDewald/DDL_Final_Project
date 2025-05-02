@@ -187,7 +187,7 @@ int note_lookup(char note) {
     case 'G':
         return 392;
     case 'A':
-        return 400;
+        return 440;
     case 'B':
         return 494;
     case 'd':
@@ -199,12 +199,13 @@ int note_lookup(char note) {
     }
 }
 
-static const note halo_tune[15] = {{'E', 1}, {'g', 1}, {'G', 1}, {'A', 1}, {'G', 1}, {'g', 1}, {'E', 2},
-                                   {'B', 1}, {'d', 1}, {'D', 2}, {'d', 1}, {'A', 1}, {'d', 1}, {'B', 5}};
+static const note halo_tune[15] = {{'E', 1}, {'g', 1}, {'G', 1},{'g', 1}, {'A', 1},{'G',1}, {'g', 1}, {'E', 2},
+                                   {'B', 1}, {'d', 1}, {'D', 2}, {'d', 1}, {'A', 1}, {'d', 1}, {'B', 2}};
 
 void play_note(note note){
-    set_freq(note.pitch);
-    delay_ms(note.beats * 500);
+	int freq = note_lookup(note.pitch);
+    set_freq(freq);
+    delay_ms(note.beats * 750);
     T2TCR = 0;
 }
 
@@ -285,19 +286,7 @@ void initialization() {
 int main(void) {
   initialization();
 
-  set_freq(1000);
-  delay_ms(1000);
+  landing_tune();
   while (1) {
-	  set_freq(400);
-	  delay_ms(1000);
-	  T2TCR = 0;
-
-	  set_freq(500);
-	  delay_ms(1000);
-	  T2TCR = 0;
-
-	  set_freq(1000);
-	  delay_ms(1000);
-	  T2TCR = 0;
   }
 }
