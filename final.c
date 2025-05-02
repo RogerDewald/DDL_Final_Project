@@ -4,11 +4,13 @@
 #include <cr_section_macros.h>
 
 #include <stdio.h>
+#include <stdlib.h>
 
 #define PCONP (*(volatile int *)0x400FC0C4)
 #define PCLKSEL0 (*(volatile int *)0x400FC1A8)
 
 #define U0THR (*(volatile int *)0x4000C000)
+#define U0RBR (*(volatile int *)0x4000C000)
 #define U0DLL (*(volatile int *)0x4000C000)
 #define U0DLM (*(volatile int *)0x4000C004)
 #define U0FCR (*(volatile int *)0x4000C008)
@@ -19,21 +21,21 @@
 #define EEPROM_ADDRESS_WRITE 0xA0
 #define EEPROM_ADDRESS_READ 0xA1
 
-//#define I2C0CONSET (*(volatile int *)0x4001C000)
-//#define I2C0STAT (*(volatile int *)0x4001C004)
-//#define I2C0ADR0 (*(volatile int *)0x4001C00C)
-//#define I2C0SCLH (*(volatile int *)0x4001C010)
-//#define I2C0SCLL (*(volatile int *)0x4001C014)
-//#define I2C0DAT (*(volatile int *)0x4001C008)
-//#define I2C0CONCLR (*(volatile int *)0x4001C018)
+#define I2C0CONSET (*(volatile int *)0x4001C000)
+#define I2C0STAT (*(volatile int *)0x4001C004)
+#define I2C0ADR0 (*(volatile int *)0x4001C00C)
+#define I2C0SCLH (*(volatile int *)0x4001C010)
+#define I2C0SCLL (*(volatile int *)0x4001C014)
+#define I2C0DAT (*(volatile int *)0x4001C008)
+#define I2C0CONCLR (*(volatile int *)0x4001C018)
 
-#define I2C0CONSET (*(volatile int *)0x4005C000)
-#define I2C0STAT (*(volatile int *)0x4005C004)
-#define I2C0ADR0 (*(volatile int *)0x4005C00C)
-#define I2C0SCLH (*(volatile int *)0x4005C010)
-#define I2C0SCLL (*(volatile int *)0x4005C014)
-#define I2C0DAT (*(volatile int *)0x4005C008)
-#define I2C0CONCLR (*(volatile int *)0x4005C018)
+//#define I2C0CONSET (*(volatile int *)0x4005C000)
+//#define I2C0STAT (*(volatile int *)0x4005C004)
+//#define I2C0ADR0 (*(volatile int *)0x4005C00C)
+//#define I2C0SCLH (*(volatile int *)0x4005C010)
+//#define I2C0SCLL (*(volatile int *)0x4005C014)
+//#define I2C0DAT (*(volatile int *)0x4005C008)
+//#define I2C0CONCLR (*(volatile int *)0x4005C018)
 
 #define TEMP_ADDRESS (0b1001000 << 1)
 
@@ -66,6 +68,16 @@
 #define T2MR1 (*(volatile int * )0x4009001C)
 #define T2EMR (*(volatile int *)0x4009003C)
 #define T2CTCR (*(volatile int *)0x40090070)
+
+#define RTC_ILR (*(volatile int *) 0x40024000)
+#define RTC_CCR (*(volatile int *) 0x40024008)
+#define RTC_CTIME0 (*(volatile int *) 0x40024014)
+#define RTC_SEC (*(volatile int *) 0x40024020)
+#define RTC_MIN (*(volatile int *) 0x40024024)
+#define RTC_HOUR (*(volatile int *) 0x40024028)
+
+#define CCR_CLKEN (1 << 0)
+#define CCR_CTCRST (1 << 1)
 
 void Start0() {
   I2C0CONSET = CONCLR_SIC;
@@ -140,6 +152,7 @@ void mem_write_byte(int index, int data){
 	Write0(address);
 	Write0(data);
 	Stop0();
+	delay_ms(25);
 }
 
 int mem_read(int index){
@@ -153,6 +166,7 @@ int mem_read(int index){
 	Write0(EEPROM_ADDRESS_READ);
 	data = Read0(0);
 	Stop0();
+	delay_ms(25);
 	return data & 0xFF;
 }
 
@@ -214,6 +228,135 @@ void landing_tune(){
         play_note(halo_tune[i]);
     }
 }
+
+int get_sec(){
+	int time = RTC_CTIME0;
+	return time & 0x3F;
+}
+int get_min(){
+	int time = RTC_CTIME0;
+	return (time >> 8) & 0x3F;
+}
+int get_hour(){
+	int time = RTC_CTIME0;
+	return (time >> 16 ) & 0x3F;
+}
+
+int U0GetChar(){
+	while (!(U0LSR & 1));
+	return U0RBR & 0xFF;
+}
+
+void U0GetTime(char time[]){
+	int idx = 0;
+	char c;
+	while(idx < 6){
+		c = (char) U0GetChar();
+		U0SendChar(c);
+		time[idx] = c;
+		idx++;
+	}
+	U0Write("\r\n");
+	time[6] = '\0';
+}
+
+void concat_chars(char fin[], char first, char second){
+	fin[0] = first;
+	fin[1] = second;
+	fin[2] = '\0';
+}
+
+void landing_sequence(){
+	char c = 'n';
+	while (1){
+		U0Write("Has the eagle landed? y/n   ");
+		c = U0GetChar();
+		U0SendChar(c);
+		U0Write("\r\n");
+		if (c == 'y'){
+			U0Write("Eagle has landed, initializing startup");
+			break;
+		}
+	}
+	landing_tune();
+	U0Write("\r\n");
+	U0Write("\r\n");
+}
+
+void collect_data(int idx){
+	int actual_index = idx * 6;
+
+	int temp = Temp_Read_Cel();
+	int t1 = get_min();
+	int t2 = get_sec();
+
+	char temp_buff[2];
+	char t1_buff[2];
+	char t2_buff[2];
+
+	if (temp < 10){
+		sprintf(temp_buff, "0%d", temp);
+	}
+	else {
+		sprintf(temp_buff, "%d", temp);
+	}
+	if (t1 < 10){
+		sprintf(t1_buff, "0%d", t1);
+	}
+	else {
+		sprintf(t1_buff, "%d", t1);
+	}
+	if (t2 < 10){
+		sprintf(t2_buff, "0%d", t2);
+	}
+	else {
+		sprintf(t2_buff, "%d", t2);
+	}
+
+	mem_write_byte(actual_index, t1_buff[0]);
+	mem_write_byte(actual_index + 1, t1_buff[1]);
+
+	mem_write_byte(actual_index + 2, t2_buff[0]);
+	mem_write_byte(actual_index + 3, t2_buff[1]);
+
+	mem_write_byte(actual_index + 4, temp_buff[0]);
+	mem_write_byte(actual_index + 5, temp_buff[1]);
+
+}
+
+void spew_data(int idx){
+	int count = 0;
+	while (count < 20){
+	int actual_idx = (idx + count) * 6;
+
+	char temp_buff[3];
+	char t1_buff[3];
+	char t2_buff[3];
+
+	t1_buff[0] = mem_read(actual_idx);
+	t1_buff[1] = mem_read(actual_idx + 1);
+	t1_buff[2] = '\0';
+
+	t2_buff[0] = mem_read(actual_idx + 2);
+	t2_buff[1] = mem_read(actual_idx + 3);
+	t2_buff[2] = '\0';
+
+	temp_buff[0] = mem_read(actual_idx + 4);
+	temp_buff[1] = mem_read(actual_idx + 5);
+	temp_buff[2] = '\0';
+
+	U0Write("Time ");
+	U0Write(t1_buff);
+	U0Write(":");
+	U0Write(t2_buff);
+	U0Write(", ");
+	U0Write("Temp ");
+	U0Write(temp_buff);
+	U0Write("\r\n");
+	count++;
+	}
+}
+
 
 void initialization() {
   // UART Block
@@ -283,10 +426,71 @@ void initialization() {
 
 }
 
+void initialize_time(){
+  // RTC Block
+  PCONP |= 1 << 9;
+
+  char buff[7];
+
+  U0Write("Please enter time, with a leading zero if needed.\r\n");
+  U0Write("Write it in this format:hhmmss\r\n");
+  U0GetTime(buff);
+
+  char sec[3];
+  char min[3];
+  char hr[3];
+  concat_chars(sec, buff[4], buff[5]);
+  concat_chars(min, buff[2], buff[3]);
+  concat_chars(hr, buff[0], buff[1]);
+
+  U0Write("Hour: ");
+  U0Write(hr);
+  U0Write("\r\n");
+
+  U0Write("Minute: ");
+  U0Write(min);
+  U0Write("\r\n");
+
+  U0Write("Second: ");
+  U0Write(sec);
+  U0Write("\r\n");
+
+  RTC_CCR = CCR_CTCRST;
+  RTC_SEC = atoi(sec);
+  RTC_MIN = atoi(min);
+  RTC_HOUR = atoi(hr);
+
+  RTC_CCR = CCR_CLKEN;
+}
+
 int main(void) {
   initialization();
+  landing_sequence();
+  initialize_time();
 
-  landing_tune();
+  int idx = 0;
+  int warmup = 0;
   while (1) {
+	  if (get_sec() % 3 == 0){
+		  collect_data(idx);
+		  idx = (idx + 1) % 20;
+		  delay_ms(1000);
+	  }
+	  if (idx == 19 && !warmup) {
+		  warmup = 1;
+		  delay_ms(1000);
+	  }
+	  if (idx == 0 && warmup){
+		  spew_data(idx);
+		  warmup = 0;
+		  U0Write("\r\n");
+		  U0Write("\r\n");
+		  delay_ms(1000);
+	  }
+	  char c = U0RBR;
+	  if (c == 's'){
+		  initialize_time();
+	  }
+
   }
 }
